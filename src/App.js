@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Plus, Upload, X } from 'lucide-react';
+import { Plus, Upload, X, Edit } from 'lucide-react';
 import './index.scss';
 
 // FileUpload component
 const FileUpload = ({ files, setFiles }) => {
+  const getFilePreview = (file) => {
+    if (file.type.startsWith('image/')) {
+      return URL.createObjectURL(file);
+    }
+    return null;
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     const droppedFiles = Array.from(e.dataTransfer.files);
@@ -45,7 +52,15 @@ const FileUpload = ({ files, setFiles }) => {
           {files.map((file, index) => (
             <li key={index}>
               <div className="file-info">
-                <Upload />
+                {file.type.startsWith('image/') ? (
+                  <img 
+                    src={getFilePreview(file)} 
+                    alt={file.name} 
+                    className="file-preview"
+                  />
+                ) : (
+                  <Upload />
+                )}
                 <span>{file.name}</span>
               </div>
               <button onClick={() => removeFile(index)}>
@@ -65,6 +80,7 @@ const TopicForm = () => {
   const [notes, setNotes] = useState('');
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
+  const [editingEntry, setEditingEntry] = useState(null);
   const [entries, setEntries] = useState(() => {
     // Load entries from localStorage on initial render
     const savedEntries = localStorage.getItem('studyEntries');
@@ -83,27 +99,54 @@ const TopicForm = () => {
       return;
     }
     
-    // Create new entry
-    const newEntry = {
-      id: Date.now(),
-      topic,
-      notes,
-      files: files.map(file => ({
-        name: file.name,
-        type: file.type,
-        size: file.size
-      })),
-      date: new Date().toISOString()
-    };
-    
-    // Add to entries
-    setEntries([newEntry, ...entries]);
+    if (editingEntry) {
+      // Update existing entry
+      setEntries(entries.map(entry => 
+        entry.id === editingEntry.id 
+          ? {
+              ...entry,
+              topic,
+              notes,
+              files: files.map(file => ({
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+              }))
+            }
+          : entry
+      ));
+      setEditingEntry(null);
+    } else {
+      // Create new entry
+      const newEntry = {
+        id: Date.now(),
+        topic,
+        notes,
+        files: files.map(file => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+        })),
+        date: new Date().toISOString()
+      };
+      setEntries([newEntry, ...entries]);
+    }
     
     // Clear form
     setTopic('');
     setNotes('');
     setFiles([]);
     setError('');
+  };
+
+  const startEditing = (entry) => {
+    setEditingEntry(entry);
+    setTopic(entry.topic);
+    setNotes(entry.notes);
+    setFiles([]); // Reset files since we can't recover the original File objects
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const deleteEntry = (id) => {
@@ -151,9 +194,34 @@ const TopicForm = () => {
           type="submit"
           className="btn-primary"
         >
-          <Plus />
-          <span>Add Entry</span>
+          {editingEntry ? (
+            <>
+              <Upload />
+              <span>Update Entry</span>
+            </>
+          ) : (
+            <>
+              <Plus />
+              <span>Add Entry</span>
+            </>
+          )}
         </button>
+        
+        {editingEntry && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setEditingEntry(null);
+              setTopic('');
+              setNotes('');
+              setFiles([]);
+              setError('');
+            }}
+          >
+            Cancel Edit
+          </button>
+        )}
       </form>
 
       {entries.length > 0 && (
@@ -163,12 +231,20 @@ const TopicForm = () => {
             <div key={entry.id} className="entry-card">
               <div className="entry-header">
                 <h3>{entry.topic}</h3>
-                <button 
-                  onClick={() => deleteEntry(entry.id)}
-                  className="delete-btn"
-                >
-                  <X />
-                </button>
+                <div className="entry-actions">
+                  <button 
+                    onClick={() => startEditing(entry)}
+                    className="edit-btn"
+                  >
+                    <Edit />
+                  </button>
+                  <button 
+                    onClick={() => deleteEntry(entry.id)}
+                    className="delete-btn"
+                  >
+                    <X />
+                  </button>
+                </div>
               </div>
               {entry.notes && (
                 <p className="entry-notes">{entry.notes}</p>
@@ -179,7 +255,15 @@ const TopicForm = () => {
                   <ul>
                     {entry.files.map((file, index) => (
                       <li key={index}>
-                        <Upload className="file-icon" />
+                        {file.type.startsWith('image/') && file.preview ? (
+                          <img 
+                            src={file.preview} 
+                            alt={file.name} 
+                            className="file-preview"
+                          />
+                        ) : (
+                          <Upload className="file-icon" />
+                        )}
                         <span>{file.name}</span>
                       </li>
                     ))}
